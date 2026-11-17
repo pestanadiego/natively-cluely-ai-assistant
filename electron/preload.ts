@@ -1002,6 +1002,14 @@ interface ElectronAPI {
   notesWindowToggle: () => Promise<{ open: boolean }>;
   notesWindowClose: () => Promise<{ success: boolean }>;
   notesWindowIsOpen: () => Promise<boolean>;
+  /**
+   * The notepad's script view went on or off. Its Next / Previous slide
+   * shortcuts are held only while it is on; the answer has them as bound now
+   * (Electron accelerators) and the ids the OS did not hand over.
+   */
+  notesSlideScriptSet: (on: boolean) => Promise<{ on: boolean; next: string; prev: string; unavailable: string[] }>;
+  /** Main closed the script view (the notepad was closed). */
+  onNotesSlideScriptOff: (callback: () => void) => () => void;
   onNotesWindowVisibility: (callback: (open: boolean) => void) => () => void;
   /** The notes window's text and the meeting it belongs to. */
   liveNotesGetState: () => Promise<{ phase: 'idle' | 'live' | 'ended'; meetingId: string | null; text: string }>;
@@ -3174,6 +3182,14 @@ contextBridge.exposeInMainWorld('electronAPI', {
   notesWindowToggle: () => ipcRenderer.invoke('notes-window:toggle'),
   notesWindowClose: () => ipcRenderer.invoke('notes-window:close'),
   notesWindowIsOpen: () => ipcRenderer.invoke('notes-window:is-open'),
+  notesSlideScriptSet: (on: boolean) => ipcRenderer.invoke('notes-window:set-slide-script', on === true),
+  onNotesSlideScriptOff: (callback: () => void) => {
+    const subscription = () => callback();
+    ipcRenderer.on('notes-slide-script-off', subscription);
+    return () => {
+      ipcRenderer.removeListener('notes-slide-script-off', subscription);
+    };
+  },
   getMeetingSurface: () => ipcRenderer.invoke('meeting-surface:get'),
   setMeetingSurface: (surface: 'overlay' | 'notepad') => ipcRenderer.invoke('meeting-surface:set', surface),
   onNotesWindowVisibility: (callback: (open: boolean) => void) => {

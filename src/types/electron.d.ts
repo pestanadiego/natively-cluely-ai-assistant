@@ -1106,6 +1106,10 @@ export interface ElectronAPI {
   notesWindowToggle?: () => Promise<{ open: boolean }>
   notesWindowClose?: () => Promise<{ success: boolean }>
   notesWindowIsOpen?: () => Promise<boolean>
+  /** The notepad's script view went on or off; answers with its two shortcuts as bound now and the ids the OS did not hand over. */
+  notesSlideScriptSet?: (on: boolean) => Promise<{ on: boolean; next: string; prev: string; unavailable: string[] }>
+  /** Main closed the script view (the notepad was closed). */
+  onNotesSlideScriptOff?: (callback: () => void) => () => void
   liveNotesMeetingInfo?: () => Promise<{ live: boolean; title: string | null; people: number; event?: { id: string; title: string | null; startTime: string | null; endTime: string | null; link: string | null } | null; attendees?: Array<{ email: string; name: string | null }>; selfEmail?: string | null; speakers?: { me: string; them: string } }>
   /** The notepad's title, typed by the user (the meeting is saved under it). */
   /** Copy text from the notepad (main's clipboard: the window is never focused). */

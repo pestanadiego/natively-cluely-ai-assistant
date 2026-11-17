@@ -1916,6 +1916,11 @@ export class AppState {
     // launcher's "Meeting ongoing" brings the notepad back (resumeMeetingSurface).
     this.notesWindowHelper.onClosedByUser(() => {
       try { require('./services/FunnelTelemetry').funnelTelemetry.notepadUsed('closed'); } catch { /* analytics only */ }
+      // Closing the notepad leaves its script view: the two slide keys go back
+      // to the other apps, and the page is the notes again when it reopens.
+      if (this.setNotesSlideScript(false).wasOn) {
+        this.sendToWindow(this.notesWindowHelper.getWindow(), 'notes-slide-script-off');
+      }
       const inactive = this.isUndetectable ? true : undefined;
       const action = planNotesClosed(this.isMeetingActive, this.windowHelper.isOverlayHeldHidden());
       if (action === 'owed-launcher') this.windowHelper.showOwedLauncher(inactive);
@@ -2432,6 +2437,13 @@ export class AppState {
           this.sendToMeetingSurfaces('global-shortcut', { action: 'processScreenshots' });
         } else if (actionId === 'general:reset-cancel') {
           this.sendToMeetingSurfaces('global-shortcut', { action: 'resetCancel' });
+
+        // The notepad's script view: one slide's part forward or back. Only the
+        // notepad listens; the keys are held only while that view is on.
+        } else if (actionId === 'notes:nextSlide' || actionId === 'notes:prevSlide') {
+          this.sendToWindow(this.notesWindowHelper?.getWindow(), 'global-shortcut', {
+            action: actionId === 'notes:nextSlide' ? 'nextSlide' : 'prevSlide',
+          });
         }
       } catch (e: any) {
         if (e.message !== "Selection cancelled" && e.message !== "Screenshot capture already in progress") {
@@ -2667,6 +2679,27 @@ export class AppState {
     // The notepad shows the meeting's status too (capture, transcription, pause):
     // in a notepad meeting the overlay is hidden all meeting.
     sendOnce(this.notesWindowHelper?.getWindow());
+  }
+
+  /**
+   * The notepad's script view came up or went away (2026-11-16,
+   * src/components/notes/slideScript.ts). Its Next / Previous slide shortcuts
+   * are registered only in between (KeybindManager.setSlideScriptActive), on
+   * macOS and Windows alike. Answers with the keys as bound now and whether
+   * the OS handed them over, so the view can say what to press.
+   */
+  public setNotesSlideScript(on: boolean): { on: boolean; wasOn: boolean; next: string; prev: string; unavailable: string[] } {
+    const keybinds = KeybindManager.getInstance();
+    const wasOn = keybinds.isSlideScriptActive();
+    keybinds.setSlideScriptActive(on === true);
+    const failed = new Set(keybinds.getRegistrationFailures().map((f) => f.id));
+    const globalOn = keybinds.getGlobalShortcutsEnabled();
+    const next = keybinds.getKeybind('notes:nextSlide') ?? '';
+    const prev = keybinds.getKeybind('notes:prevSlide') ?? '';
+    const unavailable = on === true
+      ? (['notes:nextSlide', 'notes:prevSlide'] as const).filter((id) => !globalOn || failed.has(id) || !(id === 'notes:nextSlide' ? next : prev))
+      : [];
+    return { on: on === true, wasOn, next, prev, unavailable };
   }
 
   /** Pause or resume transcription (the notepad's pill); only while a meeting runs. */

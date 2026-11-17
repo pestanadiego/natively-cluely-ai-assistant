@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { AnimatePresence, MotionConfig, motion } from 'framer-motion';
-import { ArrowDown, Check, ChevronDown, ChevronUp, Copy, FileText, ImagePlus, LayoutGrid, Minus, MoreHorizontal, Paperclip, Pause, Play, RotateCcw, Scissors, Search, X } from 'lucide-react';
+import { ArrowDown, Check, ChevronDown, ChevronUp, Copy, FileText, ImagePlus, LayoutGrid, Minus, MoreHorizontal, Paperclip, Pause, Play, Presentation, RotateCcw, Scissors, Search, X } from 'lucide-react';
 import { useResolvedTheme } from '../hooks/useResolvedTheme';
 import { applyTypedKeyAtEnd, plainAnswerText } from './meeting/notesView';
 import { NotepadAnswer } from './notes/NotepadAnswer';
@@ -19,6 +19,9 @@ import { resumeSpot } from '../../electron/services/meeting/meetingResume';
 import { resumeSavedMeeting } from '../lib/startMeetingRequest';
 import { TranscriptControls } from './notes/TranscriptControls';
 import { NpPop } from './notes/NpPop';
+import { NotesScriptBar, NotesScriptPage, type NotesScriptKeys } from './notes/NotesScript';
+import { SLIDE_SHORTCUT_STEPS, splitScriptIntoSlides, stepSlide } from './notes/slideScript';
+import { acceleratorToKeys } from '../utils/keyboardUtils';
 import { NOTE_RECIPES, noteRecipeById, parseSlashCommand, recipesFor, searchRecipes, type NoteRecipe } from '../../electron/llm/noteRecipes';
 import { NOTEPAD_DEMO_STILL_MS, notepadDemoFrame, sameDemoContent, type NotepadDemoFrame } from './notes/notepadDemo';
 
@@ -42,6 +45,11 @@ import { NOTEPAD_DEMO_STILL_MS, notepadDemoFrame, sameDemoContent, type NotepadD
  *    going, and capture or transcription trouble.
  *  - After Stop (notes/NotesEnhanced.tsx): the notes written into the same
  *    window, a My notes / Enhanced switch at the bottom, the template, Copy, Share.
+ *  - Script by slide (⋯ menu, 2026-11-16, notes/NotesScript.tsx): for someone
+ *    presenting. The notes are read one slide's part at a time (a part starts
+ *    at each heading, notes/slideScript.ts), stepped with the view's arrows or
+ *    the Next slide / Previous slide global shortcuts, which main registers
+ *    only while the view is on. The text is the user's own; no model is asked.
  *
  * Its look is Granola's own (sizes, colours, type), from the `.notepad` tokens
  * in index.css; the title uses IBM Plex Serif, Granola's fallback for its
@@ -211,6 +219,12 @@ const NotesWindow: React.FC<{ preview?: NotesWindowPreview }> = ({ preview }) =>
     const [titleDraft, setTitleDraftState] = useState('');
     const [attendeeDraft, setAttendeeDraftState] = useState('');
     const [findOpen, setFindOpen] = useState(false);
+    // Script by slide: on or off, the slide shown, and the shortcuts as main bound them.
+    const [scriptOn, setScriptOn] = useState(false);
+    const [slideIndex, setSlideIndex] = useState(0);
+    const [scriptKeys, setScriptKeys] = useState<NotesScriptKeys | null>(null);
+    const scriptOnRef = useRef(false);
+    const slideCountRef = useRef(0);
     const [findQuery, setFindQueryState] = useState('');
     const [findPos, setFindPos] = useState({ index: 0, count: 0 });
     const [endedTab, setEndedTab] = useState<'enhanced' | 'mine'>('enhanced');
@@ -764,7 +778,8 @@ const NotesWindow: React.FC<{ preview?: NotesWindowPreview }> = ({ preview }) =>
                         .then((text) => {
                             // Not after the session ended or moved to another field.
                             if (!text || !hookTypingRef.current || fieldRef.current !== f) return;
-                            if (f === 'notes') editorRef.current?.pasteText(text);
+                            // The script view is read-only: nothing is pasted under it.
+                            if (f === 'notes') { if (!scriptOnRef.current) editorRef.current?.pasteText(text); }
                             else if (tf) {
                                 const allSelected = fieldSelected(f);
                                 if (allSelected) setFieldSel(null);
@@ -1028,6 +1043,56 @@ const NotesWindow: React.FC<{ preview?: NotesWindowPreview }> = ({ preview }) =>
     };
     const showEnhanced = phase === 'ended' && !!meetingId && endedTab === 'enhanced';
     const showTabs = phase === 'ended' && !!meetingId;
+
+    // ── Script by slide (notes/slideScript.ts) ──
+    const slides = useMemo(() => (scriptOn ? splitScriptIntoSlides(text) : []), [scriptOn, text]);
+    const scriptShown = scriptOn && !preview && phase !== 'ended';
+    const shownSlide = stepSlide(slideIndex, 0, slides.length);
+    slideCountRef.current = slides.length;
+    const stepScript = useCallback((delta: number) => {
+        setSlideIndex((i) => stepSlide(stepSlide(i, 0, slideCountRef.current), delta, slideCountRef.current));
+    }, []);
+    const openScript = () => {
+        setMenuOpen(false);
+        setFindOpen(false);
+        setFindQuery('');
+        setScriptOn(true);
+    };
+    const closeScript = useCallback(() => setScriptOn(false), []);
+    // The meeting stopped: the page is the meeting's notes again.
+    useEffect(() => { if (phase === 'ended') setScriptOn(false); }, [phase]);
+    // Main holds the two slide shortcuts only while the view is on, and answers
+    // with the keys as bound now. Sent on mount too (off), so a reloaded page
+    // never leaves them held.
+    useEffect(() => {
+        if (preview) return;
+        scriptOnRef.current = scriptShown;
+        if (!scriptShown) setScriptKeys(null);
+        let cancelled = false;
+        window.electronAPI?.notesSlideScriptSet?.(scriptShown).then((res) => {
+            if (cancelled || !res || !scriptShown) return;
+            setScriptKeys({
+                next: acceleratorToKeys(res.next),
+                prev: acceleratorToKeys(res.prev),
+                unavailable: Array.isArray(res.unavailable) && res.unavailable.length > 0,
+            });
+        }).catch(() => { /* the arrows still work */ });
+        return () => { cancelled = true; };
+    }, [scriptShown, preview]);
+    useEffect(() => {
+        if (preview) return;
+        const offKeys = window.electronAPI?.onGlobalShortcut?.(({ action }) => {
+            const step = Object.prototype.hasOwnProperty.call(SLIDE_SHORTCUT_STEPS, action) ? SLIDE_SHORTCUT_STEPS[action] : 0;
+            if (step && scriptOnRef.current) stepScript(step);
+        });
+        // The notepad was closed: main released the keys, and the page is the notes when it reopens.
+        const offClosed = window.electronAPI?.onNotesSlideScriptOff?.(closeScript);
+        return () => { offKeys?.(); offClosed?.(); };
+    }, [preview, stepScript, closeScript]);
+    // A new slide starts at its top.
+    useEffect(() => {
+        if (scriptShown) pageRef.current?.scrollTo({ top: 0 });
+    }, [scriptShown, shownSlide]);
     const barShown = phase === 'live' || showTabs;
     useLayoutEffect(() => {
         const page = pageRef.current;
@@ -1233,8 +1298,13 @@ const NotesWindow: React.FC<{ preview?: NotesWindowPreview }> = ({ preview }) =>
                         <X className="w-4 h-4" strokeWidth={1.75} />
                     </button>
                         <NpPop open={menuOpen && phase !== 'ended'} origin="top right" role="menu" className="absolute right-0 top-9 z-40 w-56 p-1">
-                            <button type="button" role="menuitem" className={menuItem} style={ink('--np-ink')} onClick={() => { setMenuOpen(false); setFindOpen(true); }}>
-                                <Search className="w-4 h-4" strokeWidth={1.75} style={ink('--np-ink-secondary')} /> Find in notes
+                            {!scriptShown && (
+                                <button type="button" role="menuitem" className={menuItem} style={ink('--np-ink')} onClick={() => { setMenuOpen(false); setFindOpen(true); }}>
+                                    <Search className="w-4 h-4" strokeWidth={1.75} style={ink('--np-ink-secondary')} /> Find in notes
+                                </button>
+                            )}
+                            <button type="button" role="menuitem" className={menuItem} style={ink('--np-ink')} onClick={() => { if (scriptShown) { setMenuOpen(false); closeScript(); } else openScript(); }}>
+                                <Presentation className="w-4 h-4" strokeWidth={1.75} style={ink('--np-ink-secondary')} /> {scriptShown ? 'Back to notes' : 'Script by slide'}
                             </button>
                             {phase === 'live' && (
                                 <>
@@ -1242,6 +1312,7 @@ const NotesWindow: React.FC<{ preview?: NotesWindowPreview }> = ({ preview }) =>
                                         {paused ? <Play className="w-4 h-4" strokeWidth={1.75} style={ink('--np-ink-secondary')} /> : <Pause className="w-4 h-4" strokeWidth={1.75} style={ink('--np-ink-secondary')} />}
                                         {paused ? 'Resume transcription' : 'Pause transcription'}
                                     </button>
+                                    {!scriptShown && (<>
                                     <button type="button" role="menuitem" className={menuItem} style={ink('--np-ink')} disabled={!!working} onClick={() => { setMenuOpen(false); void shortenLine(); }}>
                                         <Scissors className="w-4 h-4" strokeWidth={1.75} style={ink('--np-ink-secondary')} />
                                         {working === 'shorten' ? 'Shortening…' : 'Shorten this line'}
@@ -1250,6 +1321,7 @@ const NotesWindow: React.FC<{ preview?: NotesWindowPreview }> = ({ preview }) =>
                                         <ImagePlus className="w-4 h-4" strokeWidth={1.75} style={ink('--np-ink-secondary')} />
                                         {working === 'attach' ? 'Adding…' : attached > 0 ? `Attach image (${attached} added)` : 'Attach image'}
                                     </button>
+                                    </>)}
                                 </>
                             )}
                         </NpPop>
@@ -1300,7 +1372,11 @@ const NotesWindow: React.FC<{ preview?: NotesWindowPreview }> = ({ preview }) =>
                 </div>
             )}
 
-            {findOpen && !showEnhanced && (
+            {scriptShown && (
+                <NotesScriptBar index={shownSlide} count={slides.length} keys={scriptKeys} onStep={stepScript} onExit={closeScript} />
+            )}
+
+            {findOpen && !showEnhanced && !scriptShown && (
                 <div className="np-outline shrink-0 mx-7 mt-3 flex items-center gap-1 h-8 pl-3 pr-1 rounded-full">
                     <Search className="w-3.5 h-3.5 shrink-0" strokeWidth={1.75} style={ink('--np-ink-secondary')} />
                     <input
@@ -1341,7 +1417,8 @@ const NotesWindow: React.FC<{ preview?: NotesWindowPreview }> = ({ preview }) =>
                     <NotesEnhanced ref={enhancedRef} meetingId={meetingId!} onTitle={setSavedTitle} onOpenGallery={openGallery} myNotes={text} bottomInset={bottomInset} />
                 ) : (
                     <>
-                    {phase !== 'ended' && (liveTemplate || templateNotice) && (
+                    {scriptShown && <NotesScriptPage slides={slides} index={shownSlide} />}
+                    {phase !== 'ended' && !scriptShown && (liveTemplate || templateNotice) && (
                         // The template this meeting's notes will be written in ("/" › Templates).
                         <div className="px-8 pt-3 -mb-1 flex items-center gap-2 min-w-0" role="status">
                             {liveTemplate && (
@@ -1362,12 +1439,13 @@ const NotesWindow: React.FC<{ preview?: NotesWindowPreview }> = ({ preview }) =>
                         ref={editorRef}
                         value={text}
                         onChange={commit}
-                        editable={!preview && phase !== 'ended'}
-                        hookTyping={typingHere('notes')}
+                        // Kept mounted under the script view (its undo history and caret stay), hidden and read-only.
+                        editable={!preview && phase !== 'ended' && !scriptShown}
+                        hookTyping={typingHere('notes') && !scriptShown}
                         onEngage={engage('notes')}
                         onTemplate={phase !== 'ended' && !preview ? onSlashTemplate : undefined}
                         // Step 9 (guide): the empty page's "Write notes" glows, so where to jot is plain (guide.css).
-                        className={`min-h-full px-8 pt-[19px] pb-36${notesGuide.live === 'notepad' ? ' guide-write' : ''}`}
+                        className={`${scriptShown ? 'hidden' : 'min-h-full'} px-8 pt-[19px] pb-36${notesGuide.live === 'notepad' ? ' guide-write' : ''}`}
                     />
                     </>
                 )}

@@ -13334,6 +13334,14 @@ html[data-tooltips='off'] .t-tt {
 }
 .notepad .notes-editor a { color: inherit; text-decoration-color: var(--np-ink-tertiary); }
 .notepad .notes-editor p.is-editor-empty:first-child::before { color: var(--np-placeholder); }
+/* Script by slide (notes/NotesScript.tsx, 2026-11-16): one slide's part, read at a glance while presenting. */
+.notepad .np-script-title { font-size: 22px; line-height: 1.25; font-weight: 600; letter-spacing: -0.01em; text-wrap: balance; margin-bottom: 12px; }
+.notepad .np-script .notes-editor { font-size: 19px; line-height: 1.45; min-height: 0; }
+.notepad .np-script .notes-editor h1, .notepad .np-script .notes-editor h2, .notepad .np-script .notes-editor h3 { font-size: 19px; line-height: 1.45; margin-top: 10px; }
+.notepad .np-script .notes-editor h1::before { content: none; }
+.notepad .np-script .notes-editor p + p { margin-top: 10px; }
+.notepad .np-script .notes-editor li + li { margin-top: 6px; }
+.notepad .np-script .notes-editor li > p + p { margin-top: 6px; }
 .notepad .notes-editor .notes-find-hit { background: #fde04766; }
 .notepad .notes-editor .notes-find-current { background: #f59e0b99; border-radius: 0.25rem; animation: np-beep 200ms ease-in-out; }
 .notepad .notes-editor .notes-hook-selection { background: var(--np-selection); }

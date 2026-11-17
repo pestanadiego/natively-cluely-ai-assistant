@@ -143,8 +143,9 @@ test("laid out like Granola's: neutral with pastel accents, serif title, Today +
 test('the notepad as a preview: talks to nothing, no drag handle, takes no clicks', () => {
   const page = read('src/components/NotesWindow.tsx');
   // Every effect that talks to main (state, info, transcript, status, stream, hook, keys, ping, title, template)
-  // returns early, and so does the notepad's telemetry (npTrack, 2026-11-01).
-  assert.equal((page.match(/if \(preview\b|if \(phase !== 'live' \|\| preview\)|if \(preview \|\|/g) ?? []).length, 11);
+  // returns early, and so does the notepad's telemetry (npTrack, 2026-11-01). The script view's two
+  // (2026-11-16: telling main it is on, and its shortcuts) return early too.
+  assert.equal((page.match(/if \(preview\b|if \(phase !== 'live' \|\| preview\)|if \(preview \|\|/g) ?? []).length, 13);
   assert.match(page, /preview \? '' : 'drag-region '/);
   assert.match(page, /inert=\{preview \? true : undefined\}/);
 });

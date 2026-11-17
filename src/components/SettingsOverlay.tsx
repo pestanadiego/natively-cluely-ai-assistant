@@ -3685,6 +3685,31 @@ const SettingsOverlay: React.FC<SettingsOverlayProps> = ({
                                                 ))}
                                             </div>
                                         </div>
+
+                                        {/* Notepad: the script view's keys, taken from other apps only while that view is on. */}
+                                        <div>
+                                            <h4 className="settings-title text-text-primary mb-3">{t('Notepad')}</h4>
+                                            <div className="space-y-1">
+                                                {[
+                                                    { id: 'nextSlide', label: 'Next Slide (Script)', icon: <ArrowDown size={14} /> },
+                                                    { id: 'prevSlide', label: 'Previous Slide (Script)', icon: <ArrowUp size={14} /> },
+                                                ].map((item, i) => (
+                                                    <div key={i} className="flex items-center justify-between py-1.5 group">
+                                                        <div className="flex items-center gap-3">
+                                                            <span className="text-text-tertiary group-hover:text-text-primary transition-colors w-5 flex justify-center">{item.icon}</span>
+                                                            <span className="text-sm text-text-secondary font-medium group-hover:text-text-primary transition-colors">{t(item.label)}</span>
+                                                        </div>
+                                                        <div className="flex items-center gap-2">
+                                                            {renderShortcutConflictBadge(item.id as keyof typeof shortcuts)}
+                                                            <KeyRecorder
+                                                                currentKeys={shortcuts[item.id as keyof typeof shortcuts]}
+                                                                onSave={(keys) => updateShortcut(item.id as any, keys)}
+                                                            />
+                                                        </div>
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        </div>
                                     </div>
                                 </div>
                             )}

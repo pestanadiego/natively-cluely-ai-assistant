@@ -36,6 +36,9 @@ export interface ShortcutConfig {
     selectiveScreenshot: string[];
     // Dictation (Settings › Audio): mic to clipboard
     dictation: string[];
+    // The notepad's script view: one slide's part at a time
+    nextSlide: string[];
+    prevSlide: string[];
 }
 
 function buildDefaultShortcuts(): ShortcutConfig {
@@ -71,6 +74,8 @@ function buildDefaultShortcuts(): ShortcutConfig {
         takeScreenshot: [mod, 'H'],
         selectiveScreenshot: [mod, shift, 'H'],
         dictation: [mod, shift, 'D'],
+        nextSlide: [mod, isMac ? '⌥' : 'Alt', '↓'],
+        prevSlide: [mod, isMac ? '⌥' : 'Alt', '↑'],
     };
 }
 
@@ -124,6 +129,8 @@ const BACKEND_ID_TO_ACTION: Partial<Record<string, keyof ShortcutConfig>> = {
     'general:take-screenshot': 'takeScreenshot',
     'general:selective-screenshot': 'selectiveScreenshot',
     'dictation:toggle': 'dictation',
+    'notes:nextSlide': 'nextSlide',
+    'notes:prevSlide': 'prevSlide',
 };
 
 export const useShortcuts = () => {
@@ -323,6 +330,8 @@ export const useShortcuts = () => {
             case 'takeScreenshot': backendId = 'general:take-screenshot'; break;
             case 'selectiveScreenshot': backendId = 'general:selective-screenshot'; break;
             case 'dictation': backendId = 'dictation:toggle'; break;
+            case 'nextSlide': backendId = 'notes:nextSlide'; break;
+            case 'prevSlide': backendId = 'notes:prevSlide'; break;
             default: break;
         }
 

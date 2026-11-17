@@ -79,7 +79,19 @@ export const DEFAULT_KEYBINDS: KeybindConfig[] = [
     // copy the tidied text to the clipboard. Registered only while Settings ›
     // Audio › Dictation is on (shouldRegister), so by default it takes no key.
     { id: 'dictation:toggle', label: 'Dictate to Clipboard', accelerator: 'CommandOrControl+Shift+D', isGlobal: true, defaultAccelerator: 'CommandOrControl+Shift+D' },
+
+    // The notepad's script view (2026-11-16, src/components/notes/slideScript.ts):
+    // the notes read one slide at a time, stepped while the slideshow keeps
+    // focus. Registered only while that view is on (shouldRegister), so by
+    // default they take no key. Cmd/Ctrl+Alt+Up/Down beside the horizontal
+    // scroll's Cmd/Ctrl+Alt+Left/Right: free on both platforms' defaults, and
+    // inside the Windows hook's chord subset (winChord.ts allows Alt with arrows).
+    { id: 'notes:nextSlide', label: 'Next Slide (Notepad Script)', accelerator: 'CommandOrControl+Alt+Down', isGlobal: true, defaultAccelerator: 'CommandOrControl+Alt+Down' },
+    { id: 'notes:prevSlide', label: 'Previous Slide (Notepad Script)', accelerator: 'CommandOrControl+Alt+Up', isGlobal: true, defaultAccelerator: 'CommandOrControl+Alt+Up' },
 ];
+
+/** The notepad's script-view shortcuts: held only while that view is on. */
+export const SLIDE_SCRIPT_KEYBIND_IDS: readonly string[] = ['notes:nextSlide', 'notes:prevSlide'];
 
 export class KeybindManager {
     private static instance: KeybindManager;
@@ -89,6 +101,8 @@ export class KeybindManager {
     private onUpdateCallbacks: (() => void)[] = [];
     private onShortcutTriggeredCallbacks: ((actionId: string) => void)[] = [];
     private activeMode: 'launcher' | 'overlay' = 'launcher';
+    // The notepad is showing its script view (main: setSlideScriptActive).
+    private slideScriptActive = false;
     private healthCheckTimer: NodeJS.Timeout | null = null;
     // Ids whose globalShortcut.register() call did not take. Kept as state
     // rather than fire-and-forget IPC because the first registration pass runs
@@ -114,6 +128,24 @@ export class KeybindManager {
         console.log(`[KeybindManager] Mode changed to: ${mode}. Refreshing global shortcuts.`);
         this.registerGlobalShortcuts();
         this.notifyChordsChanged();
+    }
+
+    /**
+     * The notepad's script view came up or went away (main tells us: the view
+     * is on and its window is showing). Its two shortcuts are taken from other
+     * apps only in between, in the launcher and in a meeting alike, so
+     * rehearsing before the meeting works the same.
+     */
+    public setSlideScriptActive(active: boolean): void {
+        const next = active === true;
+        if (this.slideScriptActive === next) return;
+        this.slideScriptActive = next;
+        this.registerGlobalShortcuts();
+        this.notifyChordsChanged();
+    }
+
+    public isSlideScriptActive(): boolean {
+        return this.slideScriptActive;
     }
 
     /**
@@ -147,6 +179,8 @@ export class KeybindManager {
         // Dictation's key is taken from other apps only while dictation is on,
         // in both modes (in a meeting a press says why it is refused).
         if (actionId === 'dictation:toggle') return SettingsManager.getInstance().get('dictationEnabled') === true;
+        // The script view's keys are taken only while the notepad shows it.
+        if (SLIDE_SCRIPT_KEYBIND_IDS.includes(actionId)) return this.slideScriptActive;
         if (this.activeMode === 'overlay') return true;
 
         // In launcher mode, register visibility shortcuts. window:move-* is NOT

@@ -18070,6 +18070,12 @@ export function initializeIpcHandlers(appState: AppState): void {
     return { success: true };
   });
   safeHandle('notes-window:is-open', async () => appState.notesWindowHelper.isVisible());
+  // The notepad's script view (one slide's part at a time) went on or off:
+  // its Next / Previous slide shortcuts are held only while it is on.
+  safeHandle('notes-window:set-slide-script', async (_event, on: unknown) => {
+    const { next, prev, unavailable } = appState.setNotesSlideScript(on === true);
+    return { on: on === true, next, prev, unavailable };
+  });
   // Settings › Overlay's switcher: what a meeting opens, the overlay or the
   // notepad (utils/meetingSurface.ts; read at every meeting start).
   safeHandle('meeting-surface:get', async () => normalizeMeetingSurface(SettingsManager.getInstance().get('meetingSurface')));
